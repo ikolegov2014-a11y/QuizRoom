@@ -1,17 +1,972 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuizRoom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --surface3: #252532;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0eff8;
+    --muted: rgba(240,239,248,0.45);
+    --accent: #7c6af7;
+    --accent2: #a599fa;
+    --accent-dim: rgba(124,106,247,0.15);
+    --accent-glow: rgba(124,106,247,0.35);
+    --green: #3ecf8e;
+    --green-dim: rgba(62,207,142,0.15);
+    --red: #f66;
+    --red-dim: rgba(255,102,102,0.15);
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.15);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
 
-QuizRoom
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-Квизы в реальном времени
-Создайте игру и пригласите друзей по коду комнаты
-+ Создать квиз Войти по коду
-Как это работает
-1
-Создайте квиз
-Добавьте вопросы и варианты ответов
-2
-Поделитесь кодом
-Игроки подключаются в реальном времени
-3
-Играйте вместе
-Таймер, очки за скорость, таблица лидеров
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,247,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,247,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 16px 40px;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; width: 100%; max-width: 560px; animation: fadeUp 0.3s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── HEADER ── */
+  .site-header {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 0 32px;
+  }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 12px;
+  }
+  .card-sm { padding: 16px 20px; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface2); border-color: rgba(255,255,255,0.2); }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #9180fa; border-color: #9180fa; }
+  .btn-danger { border-color: rgba(255,102,102,0.3); color: var(--red); }
+  .btn-danger:hover { background: var(--red-dim); }
+  .btn-full { width: 100%; }
+  .btn-lg { padding: 15px 28px; font-size: 15px; border-radius: var(--radius); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── INPUTS ── */
+  input, textarea, select {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .field { margin-bottom: 16px; }
+  select option { background: var(--surface2); }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-amber { background: var(--amber-dim); color: var(--amber); }
+  .badge-accent { background: var(--accent-dim); color: var(--accent2); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+
+  /* ── TYPOGRAPHY ── */
+  h1 { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; line-height: 1.2; letter-spacing: -1px; }
+  h2 { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  h3 { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 600; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .small { font-size: 13px; }
+
+  /* ── DIVIDER ── */
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 16px 0; }
+  .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── HOME ── */
+  .hero { padding: 20px 0 32px; }
+  .hero h1 { margin-bottom: 12px; }
+  .hero-sub { color: var(--muted); font-size: 16px; margin-bottom: 28px; }
+  .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ── ROOM CODE ── */
+  .room-code-display {
+    font-family: 'Syne', sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: 12px;
+    color: var(--accent2);
+    text-align: center;
+    padding: 12px 0;
+    text-shadow: 0 0 40px var(--accent-glow);
+  }
+
+  /* ── PLAYER LIST ── */
+  .player-list { display: flex; flex-direction: column; gap: 8px; }
+  .player-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    animation: fadeUp 0.25s ease;
+  }
+  .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ── PROGRESS ── */
+  .progress-wrap { margin-bottom: 20px; }
+  .progress-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .progress-bar { height: 4px; background: var(--surface3); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.4s ease; }
+
+  /* ── TIMER ── */
+  .timer-ring { position: relative; width: 72px; height: 72px; flex-shrink: 0; }
+  .timer-ring svg { transform: rotate(-90deg); }
+  .timer-ring circle { fill: none; stroke-width: 4; }
+  .timer-ring .bg { stroke: var(--surface3); }
+  .timer-ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.3s; }
+  .timer-val {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  /* ── QUESTION ── */
+  .question-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .question-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+  }
+  .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .option-btn {
+    padding: 16px 18px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border2);
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1.4;
+  }
+  .option-btn:not(:disabled):hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent2); }
+  .option-btn.selected { border-color: var(--accent); background: var(--accent-dim); color: var(--accent2); }
+  .option-btn.correct { border-color: var(--green); background: var(--green-dim); color: var(--green); }
+  .option-btn.wrong { border-color: var(--red); background: var(--red-dim); color: var(--red); }
+  .option-btn:disabled { cursor: default; }
+
+  /* ── ANSWER REVEAL ── */
+  .reveal-banner {
+    text-align: center;
+    padding: 20px;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+  }
+  .reveal-banner.correct { background: var(--green-dim); color: var(--green); border: 1px solid rgba(62,207,142,0.2); }
+  .reveal-banner.wrong { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,102,102,0.2); }
+
+  /* ── SCORES / LEADERBOARD ── */
+  .score-list { display: flex; flex-direction: column; gap: 8px; }
+  .score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+  .score-row.me { border-color: var(--accent); background: var(--accent-dim); }
+  .rank { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; min-width: 24px; color: var(--muted); }
+  .rank.gold { color: #ffd700; }
+  .rank.silver { color: #c0c0c0; }
+  .rank.bronze { color: #cd7f32; }
+  .score-points { margin-left: auto; font-family: 'Syne', sans-serif; font-weight: 700; color: var(--accent2); }
+
+  /* ── WAITING ── */
+  .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulseDot 1.4s ease-in-out infinite; }
+  @keyframes pulseDot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.3; transform:scale(0.7); } }
+
+  /* ── ANSWER COUNT BAR ── */
+  .answer-count { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
+
+  /* ── QUIZ EDITOR ── */
+  .q-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+  .q-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .q-num { background: var(--accent-dim); color: var(--accent2); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 99px; }
+  .options-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opt-field { position: relative; }
+  .opt-field input { padding-right: 36px; }
+  .opt-correct-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border2);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    transition: all 0.15s;
+  }
+  .opt-correct-btn.active { background: var(--green); border-color: var(--green); color: #fff; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface3);
+    color: var(--text);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 12px 20px;
+    font-size: 14px;
+    z-index: 999;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+    max-width: calc(100vw - 32px);
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ── UTILS ── */
+  .flex { display: flex; }
+  .flex-center { display: flex; align-items: center; justify-content: center; }
+  .gap8 { gap: 8px; }
+  .gap12 { gap: 12px; }
+  .mb8 { margin-bottom: 8px; }
+  .mb16 { margin-bottom: 16px; }
+  .mb24 { margin-bottom: 24px; }
+  .mt16 { margin-top: 16px; }
+  .mt24 { margin-top: 24px; }
+  .text-center { text-align: center; }
+  .between { justify-content: space-between; }
+
+  @media (max-width: 480px) {
+    h1 { font-size: 26px; }
+    .options-grid { grid-template-columns: 1fr; }
+    .options-edit { grid-template-columns: 1fr; }
+    .room-code-display { font-size: 36px; letter-spacing: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="site-header">
+    <div class="logo"><span class="logo-dot"></span>QuizRoom</div>
+    <div id="header-status"></div>
+  </header>
+
+  <!-- ══════════ HOME ══════════ -->
+  <div id="s-home" class="screen active">
+    <div class="hero">
+      <h1>Квизы в реальном<br>времени</h1>
+      <p class="hero-sub">Создайте игру и пригласите друзей по коду комнаты</p>
+      <div class="hero-actions">
+        <button class="btn btn-primary btn-lg" onclick="showScreen('s-create')">+ Создать квиз</button>
+        <button class="btn btn-lg" onclick="showScreen('s-join')">Войти по коду</button>
+      </div>
+    </div>
+    <div class="card">
+      <p class="small muted mb8">Как это работает</p>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="flex gap12" style="align-items:flex-start;">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);color:var(--accent2);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;flex-shrink:0;">1</div>
+          <div><p style="font-weight:500;">Создайте квиз</p><p class="muted small">Добавьте вопросы и варианты ответов</p></div>
+        </div>
+        <div class="flex gap12" style="align-items:flex-start;">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);color:var(--accent2);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;flex-shrink:0;">2</div>
+          <div><p style="font-weight:500;">Поделитесь кодом</p><p class="muted small">Игроки подключаются в реальном времени</p></div>
+        </div>
+        <div class="flex gap12" style="align-items:flex-start;">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-dim);color:var(--accent2);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;flex-shrink:0;">3</div>
+          <div><p style="font-weight:500;">Играйте вместе</p><p class="muted small">Таймер, очки за скорость, таблица лидеров</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ CREATE ══════════ -->
+  <div id="s-create" class="screen">
+    <div class="flex between" style="align-items:center; margin-bottom:24px;">
+      <button class="btn" onclick="showScreen('s-home')">← Назад</button>
+      <h2>Новый квиз</h2>
+      <button class="btn btn-primary" onclick="launchQuiz()">Запустить</button>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label>Название квиза</label>
+        <input type="text" id="quiz-title" placeholder="Например: Общие знания" value="Общие знания">
+      </div>
+      <div class="flex gap8">
+        <div class="field" style="flex:1;">
+          <label>Ваше имя (хост)</label>
+          <input type="text" id="host-name" placeholder="Имя хоста" value="Хост">
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Время на вопрос</label>
+          <select id="time-limit">
+            <option value="15">15 сек</option>
+            <option value="30" selected>30 сек</option>
+            <option value="45">45 сек</option>
+            <option value="60">60 сек</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex between" style="align-items:center; margin-bottom:10px;">
+      <h3>Вопросы</h3>
+      <button class="btn" onclick="addQuestion()">+ Добавить</button>
+    </div>
+
+    <div id="questions-list"></div>
+  </div>
+
+  <!-- ══════════ JOIN ══════════ -->
+  <div id="s-join" class="screen">
+    <div class="flex between" style="align-items:center; margin-bottom:24px;">
+      <button class="btn" onclick="showScreen('s-home')">← Назад</button>
+      <h2>Войти в игру</h2>
+      <div></div>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label>Ваше имя</label>
+        <input type="text" id="player-name" placeholder="Введите имя..." maxlength="20">
+      </div>
+      <div class="field">
+        <label>Код комнаты</label>
+        <input type="text" id="room-code-input" placeholder="XXXXX" maxlength="5"
+          style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;letter-spacing:6px;text-transform:uppercase;">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="joinRoom()">Войти →</button>
+    </div>
+  </div>
+
+  <!-- ══════════ HOST LOBBY ══════════ -->
+  <div id="s-lobby-host" class="screen">
+    <div class="flex between" style="align-items:center; margin-bottom:24px;">
+      <h2 id="lobby-quiz-title"></h2>
+      <span class="badge badge-accent">Вы хост</span>
+    </div>
+    <div class="card text-center mb16">
+      <p class="muted small mb8">Поделитесь кодом с игроками</p>
+      <div class="room-code-display" id="lobby-code"></div>
+      <button class="btn" style="margin-top:8px;" onclick="copyCode()">📋 Скопировать</button>
+    </div>
+    <div class="flex between" style="align-items:center; margin-bottom:10px;">
+      <p class="flex gap8" style="align-items:center;font-weight:500;">
+        <span class="pulse-dot"></span>
+        Игроки (<span id="player-count">0</span>)
+      </p>
+    </div>
+    <div id="lobby-players" class="player-list mb16"></div>
+    <button class="btn btn-primary btn-full btn-lg" id="start-btn" onclick="startGame()" disabled>
+      Начать игру ▶
+    </button>
+    <p class="muted small text-center mt16">Нужен хотя бы 1 игрок</p>
+  </div>
+
+  <!-- ══════════ PLAYER LOBBY ══════════ -->
+  <div id="s-lobby-player" class="screen">
+    <div class="text-center" style="padding: 16px 0 24px;">
+      <div class="avatar" id="player-avatar-big" style="width:64px;height:64px;font-size:22px;margin:0 auto 16px;"></div>
+      <h2 id="player-name-display"></h2>
+      <p class="muted mt16" id="player-room-info"></p>
+    </div>
+    <div class="card text-center mb16">
+      <p style="font-weight:600;" id="player-quiz-title"></p>
+      <p class="muted small" id="player-quiz-info"></p>
+    </div>
+    <div class="flex between" style="align-items:center; margin-bottom:10px;">
+      <p class="flex gap8" style="align-items:center;font-weight:500;">
+        <span class="pulse-dot"></span> Игроки в комнате
+      </p>
+    </div>
+    <div id="player-lobby-list" class="player-list mb16"></div>
+    <div class="card text-center">
+      <span class="pulse-dot"></span>
+      <span class="muted small" style="margin-left:8px;">Ожидаем хоста...</span>
+    </div>
+  </div>
+
+  <!-- ══════════ QUESTION ══════════ -->
+  <div id="s-question" class="screen">
+    <div class="question-header">
+      <div>
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span class="muted small">Вопрос <span id="q-index">1</span> из <span id="q-total">5</span></span>
+            <span class="badge badge-accent" id="q-score-badge">0 очков</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="q-progress"></div></div>
+        </div>
+      </div>
+      <div class="timer-ring" id="timer-ring">
+        <svg width="72" height="72" viewBox="0 0 72 72">
+          <circle class="bg" cx="36" cy="36" r="30"/>
+          <circle class="fg" id="timer-circle" cx="36" cy="36" r="30"
+            stroke-dasharray="188.5" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-val" id="timer-num">30</div>
+      </div>
+    </div>
+    <div class="question-text" id="q-text"></div>
+    <div class="options-grid" id="options-grid"></div>
+    <div class="answer-count" id="answer-count-display"></div>
+
+    <!-- Host-only next button -->
+    <div id="host-next-wrap" style="display:none; margin-top:16px;">
+      <button class="btn btn-primary btn-full btn-lg" onclick="nextQuestion()">Следующий вопрос →</button>
+    </div>
+  </div>
+
+  <!-- ══════════ ANSWER REVEAL ══════════ -->
+  <div id="s-reveal" class="screen">
+    <div id="reveal-banner" class="reveal-banner"></div>
+    <div class="question-text mb16" id="reveal-q-text" style="font-size:16px;min-height:auto;"></div>
+    <div class="options-grid mb16" id="reveal-options"></div>
+    <div class="card text-center mb16" id="reveal-explanation" style="display:none;">
+      <p class="small muted mb8">Пояснение</p>
+      <p id="reveal-explanation-text"></p>
+    </div>
+    <h3 class="mb8">Таблица лидеров</h3>
+    <div id="reveal-scores" class="score-list mb16"></div>
+    <div id="host-next-wrap2" style="display:none;">
+      <button class="btn btn-primary btn-full btn-lg" onclick="nextQuestion()">Следующий вопрос →</button>
+    </div>
+    <div id="player-wait-reveal" class="card text-center" style="display:none;">
+      <span class="pulse-dot"></span>
+      <span class="muted small" style="margin-left:8px;">Ожидаем хоста...</span>
+    </div>
+  </div>
+
+  <!-- ══════════ RESULTS ══════════ -->
+  <div id="s-results" class="screen">
+    <div class="text-center mb24">
+      <div style="font-size:48px; margin-bottom:8px;">🏆</div>
+      <h1>Игра окончена!</h1>
+      <p class="muted mt16" id="results-subtitle"></p>
+    </div>
+    <h3 class="mb8">Финальные результаты</h3>
+    <div id="final-scores" class="score-list mb24"></div>
+    <div class="flex gap8">
+      <button class="btn btn-full" onclick="showScreen('s-home')">На главную</button>
+      <button class="btn btn-primary btn-full" id="play-again-btn" style="display:none;" onclick="showScreen('s-create')">Создать новый</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ─── Socket ───────────────────────────────────────────────────
+const socket = io();
+let myRole = null;       // 'host' | 'player'
+let myName = '';
+let myScore = 0;
+let currentRoom = null;
+let currentTimeLimit = 30;
+let timerInterval = null;
+let timerSecondsLeft = 0;
+let isHost = false;
+
+// ─── Helpers ──────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function toast(msg, ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function avatarColors(name) {
+  const hues = [260,170,30,200,0,300,120];
+  const i = (name.charCodeAt(0) || 0) % hues.length;
+  const h = hues[i];
+  return { bg: `hsl(${h},50%,18%)`, color: `hsl(${h},70%,65%)` };
+}
+
+function initials(name) {
+  return name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+}
+
+function renderAvatar(name, size = 36, extra = '') {
+  const { bg, color } = avatarColors(name);
+  const fs = size < 40 ? 13 : 18;
+  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px;background:${bg};color:${color};${extra}">${initials(name)}</div>`;
+}
+
+function rankLabel(i) {
+  if (i === 0) return '<span class="rank gold">🥇</span>';
+  if (i === 1) return '<span class="rank silver">🥈</span>';
+  if (i === 2) return '<span class="rank bronze">🥉</span>';
+  return `<span class="rank">${i+1}</span>`;
+}
+
+function renderScoreList(scores, container) {
+  container.innerHTML = scores.map((p, i) => `
+    <div class="score-row ${p.name === myName && !p.isHost ? 'me' : ''}">
+      ${rankLabel(i)}
+      ${renderAvatar(p.name)}
+      <span style="flex:1;font-weight:500;">${p.name}${p.isHost ? ' <span class="badge badge-accent" style="font-size:11px;">хост</span>' : ''}</span>
+      <span class="score-points">${p.score.toLocaleString()}</span>
+    </div>
+  `).join('');
+}
+
+function copyCode() {
+  const code = document.getElementById('lobby-code').textContent.trim();
+  navigator.clipboard.writeText(code).then(() => toast('Код скопирован: ' + code));
+}
+
+// ─── Timer ────────────────────────────────────────────────────
+function startTimer(seconds) {
+  clearInterval(timerInterval);
+  timerSecondsLeft = seconds;
+  currentTimeLimit = seconds;
+
+  const numEl = document.getElementById('timer-num');
+  const circle = document.getElementById('timer-circle');
+  const circumference = 188.5;
+
+  function tick() {
+    if (numEl) numEl.textContent = timerSecondsLeft;
+    if (circle) {
+      const ratio = timerSecondsLeft / currentTimeLimit;
+      circle.style.strokeDashoffset = circumference * (1 - ratio);
+      circle.style.stroke = timerSecondsLeft <= 5 ? 'var(--red)' : (timerSecondsLeft <= 10 ? 'var(--amber)' : 'var(--accent)');
+    }
+    timerSecondsLeft--;
+    if (timerSecondsLeft < 0) clearInterval(timerInterval);
+  }
+  tick();
+  timerInterval = setInterval(tick, 1000);
+}
+
+function stopTimer() { clearInterval(timerInterval); }
+
+// ─── QUIZ EDITOR ──────────────────────────────────────────────
+let questions = [
+  { text: 'Столица Австралии?', options: ['Сидней', 'Канберра', 'Мельбурн', 'Брисбен'], correct: 1 },
+  { text: 'Сколько планет в Солнечной системе?', options: ['7', '8', '9', '10'], correct: 1 },
+  { text: 'Кто написал «Войну и мир»?', options: ['Достоевский', 'Чехов', 'Толстой', 'Пушкин'], correct: 2 },
+];
+
+function renderQuestions() {
+  const list = document.getElementById('questions-list');
+  list.innerHTML = questions.map((q, qi) => `
+    <div class="q-card">
+      <div class="q-card-header">
+        <span class="q-num">${qi+1}</span>
+        <input type="text" value="${q.text}" placeholder="Текст вопроса..."
+          onchange="questions[${qi}].text = this.value" style="flex:1; margin:0;">
+        <button class="btn btn-danger" style="padding:6px 10px; font-size:12px;"
+          onclick="removeQuestion(${qi})">✕</button>
+      </div>
+      <div class="options-edit">
+        ${q.options.map((opt, oi) => `
+          <div class="opt-field">
+            <input type="text" value="${opt}" placeholder="Вариант ${oi+1}"
+              onchange="questions[${qi}].options[${oi}] = this.value">
+            <button class="opt-correct-btn ${q.correct === oi ? 'active' : ''}"
+              onclick="setCorrect(${qi}, ${oi})" title="Правильный ответ">✓</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function addQuestion() {
+  questions.push({ text: '', options: ['', '', '', ''], correct: 0 });
+  renderQuestions();
+}
+
+function removeQuestion(qi) {
+  if (questions.length <= 1) { toast('Нужен хотя бы 1 вопрос'); return; }
+  questions.splice(qi, 1);
+  renderQuestions();
+}
+
+function setCorrect(qi, oi) {
+  questions[qi].correct = oi;
+  renderQuestions();
+}
+
+renderQuestions();
+
+// ─── LAUNCH QUIZ ──────────────────────────────────────────────
+function launchQuiz() {
+  const title = document.getElementById('quiz-title').value.trim() || 'Квиз';
+  const hostName = document.getElementById('host-name').value.trim() || 'Хост';
+  const timeLimit = parseInt(document.getElementById('time-limit').value);
+
+  if (questions.some(q => !q.text.trim())) { toast('Заполните все вопросы'); return; }
+
+  myName = hostName;
+  isHost = true;
+
+  const quiz = { title, timeLimit, questions: questions.map(q => ({ ...q, explanation: '' })) };
+
+  socket.emit('create_room', { quiz, hostName }, ({ code }) => {
+    currentRoom = code;
+    document.getElementById('lobby-code').textContent = code;
+    document.getElementById('lobby-quiz-title').textContent = title;
+    showScreen('s-lobby-host');
+  });
+}
+
+// ─── JOIN ROOM ────────────────────────────────────────────────
+function joinRoom() {
+  const name = document.getElementById('player-name').value.trim();
+  const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+  if (!name) { toast('Введите имя'); return; }
+  if (code.length < 3) { toast('Введите код комнаты'); return; }
+
+  myName = name;
+  isHost = false;
+
+  socket.emit('join_room', { code, name }, (res) => {
+    if (res.error) { toast('Ошибка: ' + res.error); return; }
+    currentRoom = code;
+    document.getElementById('player-name-display').textContent = name;
+    document.getElementById('player-room-info').textContent = 'Комната: ' + code;
+    document.getElementById('player-quiz-title').textContent = res.quiz.title;
+    document.getElementById('player-quiz-info').textContent = res.quiz.questionCount + ' вопросов';
+    const big = document.getElementById('player-avatar-big');
+    const { bg, color } = avatarColors(name);
+    big.style.background = bg; big.style.color = color;
+    big.textContent = initials(name);
+    showScreen('s-lobby-player');
+  });
+}
+
+// ─── START GAME ───────────────────────────────────────────────
+function startGame() {
+  socket.emit('start_game', { code: currentRoom });
+}
+
+function nextQuestion() {
+  socket.emit('next_question', { code: currentRoom });
+}
+
+// ─── SOCKET EVENTS ────────────────────────────────────────────
+socket.on('room_update', ({ players, code }) => {
+  // Update host lobby
+  const hostLobbyCont = document.getElementById('lobby-players');
+  if (hostLobbyCont && document.getElementById('s-lobby-host').classList.contains('active')) {
+    hostLobbyCont.innerHTML = players.map(p => `
+      <div class="player-item">
+        ${renderAvatar(p.name)}
+        <span style="font-weight:500;">${p.name}</span>
+        ${p.isHost ? '<span class="badge badge-accent" style="margin-left:auto;">Хост</span>' : '<span class="badge badge-green" style="margin-left:auto;">Готов</span>'}
+      </div>
+    `).join('');
+    const nonHost = players.filter(p => !p.isHost).length;
+    document.getElementById('player-count').textContent = nonHost;
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = nonHost < 1;
+  }
+
+  // Update player lobby
+  const pList = document.getElementById('player-lobby-list');
+  if (pList && document.getElementById('s-lobby-player').classList.contains('active')) {
+    pList.innerHTML = players.map(p => `
+      <div class="player-item">
+        ${renderAvatar(p.name)}
+        <span style="font-weight:500;">${p.name}</span>
+        ${p.isHost ? '<span class="badge badge-accent" style="margin-left:auto;">Хост</span>' : ''}
+      </div>
+    `).join('');
+  }
+});
+
+socket.on('question', ({ index, total, text, options, timeLimit }) => {
+  stopTimer();
+  myScore = myScore; // preserved
+  document.getElementById('q-index').textContent = index + 1;
+  document.getElementById('q-total').textContent = total;
+  document.getElementById('q-progress').style.width = ((index / total) * 100) + '%';
+  document.getElementById('q-text').textContent = text;
+  document.getElementById('q-score-badge').textContent = myScore.toLocaleString() + ' очков';
+  document.getElementById('answer-count-display').textContent = '';
+
+  // Options
+  const grid = document.getElementById('options-grid');
+  const letters = ['A', 'B', 'C', 'D'];
+  grid.innerHTML = options.map((opt, i) => `
+    <button class="option-btn" onclick="submitAnswer(${i}, this)">
+      <span style="font-family:'Syne',sans-serif;font-weight:700;opacity:0.5;margin-right:8px;">${letters[i]}</span>${opt}
+    </button>
+  `).join('');
+
+  if (isHost) {
+    document.getElementById('host-next-wrap').style.display = 'none';
+    grid.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+  }
+
+  showScreen('s-question');
+  startTimer(timeLimit);
+  currentTimeLimit = timeLimit;
+});
+
+function submitAnswer(optionIndex, btn) {
+  if (isHost) return;
+  document.querySelectorAll('#options-grid .option-btn').forEach(b => b.disabled = true);
+  btn.classList.add('selected');
+  socket.emit('submit_answer', { code: currentRoom, answer: optionIndex });
+}
+
+socket.on('answer_count', ({ answered, total }) => {
+  const el = document.getElementById('answer-count-display');
+  if (el) el.textContent = `Ответили: ${answered} из ${total}`;
+});
+
+socket.on('answer_reveal', ({ correctAnswer, explanation, playerResults, scores }) => {
+  stopTimer();
+
+  const myResult = playerResults[socket.id];
+  const qText = document.getElementById('q-text').textContent;
+  const optBtns = document.querySelectorAll('#options-grid .option-btn');
+
+  // Update options in question screen briefly then move to reveal
+  optBtns.forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === correctAnswer) btn.classList.add('correct');
+    else if (myResult && myResult.answer === i && i !== correctAnswer) btn.classList.add('wrong');
+  });
+
+  // Build reveal screen
+  const banner = document.getElementById('reveal-banner');
+  if (isHost) {
+    banner.className = 'reveal-banner correct';
+    banner.textContent = '✓ Правильный ответ показан';
+  } else if (myResult && myResult.correct) {
+    banner.className = 'reveal-banner correct';
+    banner.textContent = '✓ Правильно!';
+  } else {
+    banner.className = 'reveal-banner wrong';
+    banner.textContent = '✗ Неправильно';
+  }
+
+  document.getElementById('reveal-q-text').textContent = qText;
+
+  const revealOpts = document.getElementById('reveal-options');
+  const letters = ['A','B','C','D'];
+  const optTexts = [...optBtns].map(b => b.textContent.slice(1).trim());
+  revealOpts.innerHTML = optTexts.map((opt, i) => `
+    <button class="option-btn ${i === correctAnswer ? 'correct' : ''}" disabled>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;opacity:0.5;margin-right:8px;">${letters[i]}</span>${opt}
+    </button>
+  `).join('');
+
+  const expWrap = document.getElementById('reveal-explanation');
+  if (explanation) {
+    expWrap.style.display = 'block';
+    document.getElementById('reveal-explanation-text').textContent = explanation;
+  } else {
+    expWrap.style.display = 'none';
+  }
+
+  // Update my score
+  const me = scores.find(p => p.name === myName);
+  if (me) myScore = me.score;
+
+  renderScoreList(scores, document.getElementById('reveal-scores'));
+
+  document.getElementById('host-next-wrap2').style.display = isHost ? 'block' : 'none';
+  document.getElementById('player-wait-reveal').style.display = isHost ? 'none' : 'block';
+
+  showScreen('s-reveal');
+});
+
+socket.on('game_over', ({ scores }) => {
+  stopTimer();
+  const me = scores.find(p => p.name === myName);
+  const myRank = scores.findIndex(p => p.name === myName) + 1;
+  document.getElementById('results-subtitle').textContent =
+    me ? `Ваш результат: ${me.score.toLocaleString()} очков (${myRank}-е место)` : `${scores.length} участников`;
+  renderScoreList(scores, document.getElementById('final-scores'));
+  if (isHost) document.getElementById('play-again-btn').style.display = 'inline-flex';
+  showScreen('s-results');
+});
+
+socket.on('host_left', () => {
+  toast('Хост покинул игру');
+  showScreen('s-home');
+});
+
+// Input formatting for room code
+document.getElementById('room-code-input').addEventListener('input', function() {
+  this.value = this.value.toUpperCase();
+});
+</script>
+</body>
+</html>
